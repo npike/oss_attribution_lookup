@@ -9,10 +9,8 @@ import os
 import sys
 import StringIO
 import getopt
-
-#SPREADSHEET_URL = "https://docs.google.com/spreadsheet/pub?key=0AoSB-ylpS6HqdFNkRTU2U3NwMXJNdHF5LUh1SFVmcUE&output=csv"
-SPREADSHEET_URL = "https://docs.google.com/spreadsheet/pub?key=0AoPUxGWQK9YRdDNMYkUyRVhYa0wybW4zQ09xM1RmZ2c&output=csv"
-LICENSE_SPREADSHEET_TEMP_FILE = "data.csv"
+ 
+SPREADSHEET_URL = "https://docs.google.com/spreadsheet/pub?key=0AoPUxGWQK9YRdDNMYkUyRVhYa0wybW4zQ09xM1RmZ2c&output=csv" 
 COLUMN_LIBRARY_ID = 3
 COLUMN_LIBRARY_NAME = 2
 COLUMN_LIBRARY_LICENSE_TEXT = 5
@@ -41,6 +39,8 @@ class ThirdPartyLibrary:
             else:
                 self.attributionRequired = False; 
 
+    # Factory method to generate a ThirdPartyLibrary object
+    # when all we have is an ID (such as from the list of requested third party libraries)
     @classmethod
     def fromRequestedLibrary(self, id):
         ret = ThirdPartyLibrary(None)
