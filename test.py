@@ -24,10 +24,10 @@ VERBOSE = False
 class ThirdPartyLibrary:
     def __init__(self, spreadsheetRow):
         if spreadsheetRow:
-            self.id = spreadsheetRow[COLUMN_LIBRARY_ID]
-            self.name = spreadsheetRow[COLUMN_LIBRARY_NAME]
+            self.id = spreadsheetRow[COLUMN_LIBRARY_ID].strip()
+            self.name = spreadsheetRow[COLUMN_LIBRARY_NAME].strip()
             self.license = spreadsheetRow[COLUMN_LIBRARY_LICENSE_TEXT]
-            self.licenseType = spreadsheetRow[COLUMN_LIBRARY_LICENSE_TYPE]
+            self.licenseType = spreadsheetRow[COLUMN_LIBRARY_LICENSE_TYPE].strip()
            
             # basically testing if string is not empty.  empty strings are evaluated to false in python.
             # approved libraries will have someone's name or email in the field.
@@ -51,7 +51,7 @@ class ThirdPartyLibrary:
         return self.id == other.id
    
 def usage():
-    print 'Usage: test.py -l <librarylistfile> -v' 
+    print 'Usage: test.py -l <librarylistfile> -o <noticesoutputfile> -v' 
 
 def log(message):
     global VERBOSE
@@ -61,7 +61,7 @@ def log(message):
 def main(argv): 
     global VERBOSE
     ARG_INPUT_FILE = ''
-    ARG_OUTPUT_FILE = 'notices.xml'
+    ARG_OUTPUT_FILE = ''
     requestedThirdPartyLibraries = []
 
     if len(argv) == 0:
@@ -69,7 +69,7 @@ def main(argv):
         sys.exit()
 
     try:
-        opts, args = getopt.getopt(argv,"hvl:",["librarylistfile="])
+        opts, args = getopt.getopt(argv,"hvl:o:",["librarylistfile=","noticesoutputfile="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)   
@@ -82,35 +82,42 @@ def main(argv):
         elif opt in ("-v", "--verbose"):
             print "Verbose enabled."
             VERBOSE = True
+        elif opt in ("-o", "--output"):
+            ARG_OUTPUT_FILE = arg
+
+    # check our required arguments
+    if ARG_INPUT_FILE == '':
+        usage()
+        print "Error: Must specify librarylist input file. (-l)"
+        sys.exit(2)
+
+    if ARG_OUTPUT_FILE == '':
+        usage()
+        print 'Error: Must specify notices output file. (-o).  Usually you want this to be the location to the assets folder of your project, with a name like "notices.xml".'
+        sys.exit(2)
 
     try:
-        print "Attempting to read " + ARG_INPUT_FILE;
+        print "Reading requested library list: " + ARG_INPUT_FILE;
         ins = open(ARG_INPUT_FILE, "r") 
         for line in ins:
             requestedThirdPartyLibraries.append(ThirdPartyLibrary.fromRequestedLibrary(line.rstrip()))
         ins.close() 
-        print "{} requested third party libraries.".format(len(requestedThirdPartyLibraries))
     except IOError as e:
-        print 'Unable to read library list input file: '+e
-        sys.exit()    
+        print 'Unable to read requested library list: '+e
+        sys.exit(1)    
 
     if len(requestedThirdPartyLibraries) == 0:
         print 'No third party libraries requested for this project.  Aborting.'
         sys.exit()
 
-    print "\n"
-    print "Requested libraries: "
-    for library in requestedThirdPartyLibraries:
-        print "\t",library.id
-
     # Download license spreadsheet as CSV file
-    log("Downloading latest spreadsheet...")
+    log("Downloading latest spreadsheet...{}".format(SPREADSHEET_URL))
     headers = { 'User-Agent' : 'Mozilla/5.0' }
     req = urllib2.Request(SPREADSHEET_URL, None, headers)
     try: 
         ossCSVData = urllib2.urlopen(req)
     except Exception, e:
-        print "Unable to fetch update to spreadsheet."
+        print "Error: Unable to fetch update to spreadsheet."
         print e
         sys.exit(2)   
 
@@ -118,29 +125,37 @@ def main(argv):
     log("Parsing CSV")
     data = csv.reader(StringIO.StringIO(ossCSVData.read()))
     approvedLibraries = [ThirdPartyLibrary(row) for row in data]
+ 
+    print "{} approved third party libraries available.".format(len(approvedLibraries)-1)
+    print "{} requested third party libraries.".format(len(requestedThirdPartyLibraries))
+
 
     print "\n"
-    print "{} approved third party libraries available.\n".format(len(approvedLibraries))
+    print "The following third party libraries have been requested in this project: "
+    for library in requestedThirdPartyLibraries:
+        print "\t",library.id
 
+    print "\n"
   
-    # check to see if any of our requested libraries are in the spreadsheet
-
+    # check to see if any of our requested libraries are in the spreadsheet and approved and require attribution
+    log("Generating notices file...")
     outputXML = '<notices>'
     for library in requestedThirdPartyLibraries:
         if library in approvedLibraries:
             libraryIndex = approvedLibraries.index(library)
             log("Requested library ({}) found at index {} ".format(approvedLibraries[libraryIndex].name,libraryIndex))
-            log("{} is in approved list.".format(library.id));
+           
             if approvedLibraries[libraryIndex].attributionRequired:
-                outputXML += '<notice name="{}" type="{}" approved="{}"><![CDATA[{}]]></library>'.format(approvedLibraries[libraryIndex].name,approvedLibraries[libraryIndex].licenseType, approvedLibraries[libraryIndex].approved, approvedLibraries[libraryIndex].license)
+                print '"{}" is in approved list.'.format(library.id);
+                outputXML += '<notice name="{}" type="{}" approved="{}"><![CDATA[{}]]></notice>'.format(approvedLibraries[libraryIndex].name,approvedLibraries[libraryIndex].licenseType, approvedLibraries[libraryIndex].approved, approvedLibraries[libraryIndex].license)
             else:
-                print 'Attribution not required for library {}'.format(approvedLibraries[libraryIndex].name)
+                print '"{}" does not require attribution and will be omitted from notices.'.format(approvedLibraries[libraryIndex].id)
+
         else:
-            print library.id, "is not in approved list."
+            print '"{}" is not in approved list.'.format(library.id)
 
     outputXML += '</notices>'
 
-    print "\nDone."
 
     log(outputXML)
 
@@ -148,7 +163,7 @@ def main(argv):
         fout = open(ARG_OUTPUT_FILE, "w")
         fout.write(outputXML)
         fout.close()
-        print "notices.xml written to ", ARG_OUTPUT_FILE
+        print "\nnotices.xml written to ", ARG_OUTPUT_FILE
     except Exception, e:
         print "Unable to write ",ARG_OUTPUT_FILE
         sys.exit(1)
